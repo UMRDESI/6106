@@ -1,15 +1,7 @@
-from flask import Flask
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flask Example</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-<div class=“container>
-    <h1>Hello, Flask!</h1>
-    <p class="small-text">{{r}}</p>
-    <!-- Your other HTML content goes here -->
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-</div>
-</body>
+from flask import Flask, render_template, request
+app = Flask(__name__)
+@app.route("/",methods=["GET","POST"])
+def index():
+    return(render_template("index.html"))
+if __name__ == "__main__":
+    app.run()
