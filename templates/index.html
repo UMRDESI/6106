@@ -3,12 +3,12 @@
     <link rel="stylesheet" href="{{url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div>
+    <div class="container">
         <h2>Welcome to 6106 Dapp</h2>
         <p>Please enter your user name</p>
-        <from action="/main" method="post">
+        <form action="/main" method="post">
             <input type="text" name="q">
             <input type="submit" value="Enter">
-        </from>
+        </form>
     </div>
 </body>
