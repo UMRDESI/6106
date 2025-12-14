@@ -1,0 +1,336 @@
+<head>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="stylesheet" href="{{url_for('static',filename='styles.css')}}">
+</head>
+
+<body>
+    <div class="container">
+        <h2>Message Board</h2>
+
+        <!-- 发消息 -->
+        <input type="text" id="content" placeholder="Message content (max 280 chars)">
+        <button type="button" class="btn" onclick="postBoardMessage()">Post Message</button>
+
+        <hr style="margin:16px 0; opacity:0.2;">
+
+        <!-- 总消息数 -->
+        <button type="button" class="btn" onclick="viewTotal()">View Total Messages</button>
+        <p id="total_messages"></p>
+
+        <!-- 按 id 查消息 -->
+        <input type="number" id="msg_id" placeholder="Message ID (0..N-1)">
+        <button type="button" class="btn" onclick="viewMessageById()">Get Message</button>
+        <p id="view_author"></p>
+        <p id="view_time"></p>
+        <p id="view_content"></p>
+
+        <hr style="margin:16px 0; opacity:0.2;">
+
+        <!-- 可选：按作者统计 -->
+        <input type="text" id="author_addr" placeholder="Author address (optional)">
+        <button type="button" class="btn" onclick="listAuthorMessages()">List Author Messages</button>
+
+        <p id="total_by_author"></p>
+
+        <!-- 展示作者的消息 id 列表（可点击） -->
+        <div id="author_list" style="margin-top:10px;"></div>
+
+        <form action="/main" method="post">
+            <input type="submit" value="Main">
+        </form>
+
+        <script src="https://cdn.jsdelivr.net/npm/web3@1.5.2/dist/web3.min.js"></script>
+        <script>
+            // 1) 换成你部署到 Sepolia 的 MessageBoard 合约地址
+            const contractAddress = "0x055a7a1d26a40b5cf2e317cd696ab4f530ededbb";
+
+            // 2) MessageBoard ABI（按我给你的合约：post / totalMessages / getMessage / totalMessagesBy / messageIdBy）
+            const contractABI = [
+                {
+                    "anonymous": false,
+                    "inputs": [
+                        {
+                            "indexed": true,
+                            "internalType": "uint256",
+                            "name": "id",
+                            "type": "uint256"
+                        },
+                        {
+                            "indexed": true,
+                            "internalType": "address",
+                            "name": "author",
+                            "type": "address"
+                        },
+                        {
+                            "indexed": false,
+                            "internalType": "uint256",
+                            "name": "timestamp",
+                            "type": "uint256"
+                        },
+                        {
+                            "indexed": false,
+                            "internalType": "string",
+                            "name": "content",
+                            "type": "string"
+                        }
+                    ],
+                    "name": "MessagePosted",
+                    "type": "event"
+                },
+                {
+                    "inputs": [
+                        {
+                            "internalType": "string",
+                            "name": "content",
+                            "type": "string"
+                        }
+                    ],
+                    "name": "post",
+                    "outputs": [],
+                    "stateMutability": "nonpayable",
+                    "type": "function"
+                },
+                {
+                    "inputs": [
+                        {
+                            "internalType": "uint256",
+                            "name": "id",
+                            "type": "uint256"
+                        }
+                    ],
+                    "name": "getMessage",
+                    "outputs": [
+                        {
+                            "internalType": "address",
+                            "name": "author",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "timestamp",
+                            "type": "uint256"
+                        },
+                        {
+                            "internalType": "string",
+                            "name": "content",
+                            "type": "string"
+                        }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                },
+                {
+                    "inputs": [
+                        {
+                            "internalType": "address",
+                            "name": "author",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "index",
+                            "type": "uint256"
+                        }
+                    ],
+                    "name": "messageIdBy",
+                    "outputs": [
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                },
+                {
+                    "inputs": [],
+                    "name": "totalMessages",
+                    "outputs": [
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                },
+                {
+                    "inputs": [
+                        {
+                            "internalType": "address",
+                            "name": "author",
+                            "type": "address"
+                        }
+                    ],
+                    "name": "totalMessagesBy",
+                    "outputs": [
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                }
+            ];
+
+            // 注意：这里不主动 requestAccounts；只创建 web3 实例（符合你“点击按钮才弹钱包”的习惯）
+            const web3 = new Web3(Web3.givenProvider);
+            const contract = new web3.eth.Contract(contractABI, contractAddress);
+
+            // 工具：把时间戳转成可读时间
+            function tsToString(ts) {
+                // ts 是秒，JS Date 要毫秒
+                const d = new Date(Number(ts) * 1000);
+                return d.toLocaleString();
+            }
+
+            async function postBoardMessage() {
+                    console.log("postBoardMessage called!");
+                    console.trace();
+                try {
+                    const content = document.getElementById("content").value.trim();
+                    if (!content) {
+                        alert("Message cannot be empty.");
+                        return;
+                    }
+                    
+                    if (content.length > 280) {
+                        alert("Message too long (max 280).");
+                        return;
+                    }
+
+                    const accounts = await web3.eth.requestAccounts(); // 点击按钮才连接钱包
+                    await contract.methods.post(content).send({ from: accounts[0] });
+
+                    alert("Board Message posted!");
+                    document.getElementById("content").value = "";
+                } catch (e) {
+                    console.error(e);
+                    alert("Transaction failed or rejected.");
+                }
+            }
+
+            async function viewTotal() {
+                try {
+                    const total = await contract.methods.totalMessages().call();
+                    document.getElementById("total_messages").innerText = "Total Messages: " + total;
+                } catch (e) {
+                    console.error(e);
+                    alert("Failed to read totalMessages.");
+                }
+            }
+
+            async function viewMessageById() {
+                try {
+                    const id = document.getElementById("msg_id").value;
+                    if (id === "" || Number(id) < 0) {
+                        alert("Please input a valid message id.");
+                        return;
+                    }
+
+                    const result = await contract.methods.getMessage(id).call();
+
+                    document.getElementById("view_author").innerText  = "Author: " + result.author;
+                    document.getElementById("view_time").innerText    = "Time: " + tsToString(result.timestamp);
+                    document.getElementById("view_content").innerText = "Content: " + result.content;
+                } catch (e) {
+                    console.error(e);
+                    alert("getMessage failed. (Maybe id is out of range)");
+                }
+            }
+
+            async function viewTotalByAuthor() {
+                try {
+                    const author = document.getElementById("author_addr").value.trim();
+                    if (!author) {
+                        alert("Please input author address.");
+                        return;
+                    }
+
+                    const total = await contract.methods.totalMessagesBy(author).call();
+                    document.getElementById("total_by_author").innerText = "Messages by " + author + ": " + total;
+                } catch (e) {
+                    console.error(e);
+                    alert("Failed to read totalMessagesBy.");
+                }
+            }
+            
+            function clearAuthorList() {
+                document.getElementById("author_list").innerHTML = "";
+            }
+
+            function renderIdList(ids) {
+                const box = document.getElementById("author_list");
+                if (ids.length === 0) {
+                    box.innerHTML = "<p style='opacity:0.7;'>No messages for this author.</p>";
+                    return;
+                }
+
+                // 把每个 id 渲染成按钮，点击就自动查那条消息
+                box.innerHTML = ids.map(id => {
+                    return `<button type="button" class="btn" style="margin:6px 0;" onclick="viewMessageByIdDirect(${id})">
+                                View message id: ${id}
+                            </button>`;
+                }).join("");
+            }
+
+            // 读取作者的所有 message id，并渲染
+            async function listAuthorMessages() {
+                try {
+                    const author = document.getElementById("author_addr").value.trim();
+                    if (!author) {
+                        alert("Please input author address.");
+                        return;
+                    }
+
+                    clearAuthorList();
+
+                    const total = await contract.methods.totalMessagesBy(author).call();
+                    document.getElementById("total_by_author").innerText =
+                        "Messages by " + author + ": " + total;
+
+                    const n = Number(total);
+                    if (n === 0) {
+                        renderIdList([]);
+                        return;
+                    }
+
+                    // 逐个读取 id（简单起见，不做批量/分页；课程展示够用）
+                    const ids = [];
+                    for (let i = 0; i < n; i++) {
+                        const id = await contract.methods.messageIdBy(author, i).call();
+                        ids.push(Number(id));
+                    }
+
+                    // 可选：让 id 从新到旧显示（更符合人类习惯）
+                    ids.sort((a, b) => b - a);
+
+                    renderIdList(ids);
+
+                } catch (e) {
+                    console.error(e);
+                    alert("Failed to list messages for this author.");
+                }
+            }
+
+            // 点击按钮时调用：直接按 id 读消息（不需要手动填输入框）
+            async function viewMessageByIdDirect(id) {
+                try {
+                    const result = await contract.methods.getMessage(id).call();
+                    document.getElementById("msg_id").value = id; // 顺手把输入框也同步
+                    document.getElementById("view_author").innerText  = "Author: " + result.author;
+                    document.getElementById("view_time").innerText    = "Time: " + tsToString(result.timestamp);
+                    document.getElementById("view_content").innerText = "Content: " + result.content;
+                } catch (e) {
+                    console.error(e);
+                    alert("getMessage failed. (Maybe id is out of range)");
+                }
+            }
+
+        </script>
+    </div>
+</body>

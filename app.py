@@ -37,6 +37,11 @@ def deposit_money():
 
     return(render_template("deposit_money.html"))
 
+@app.route("/messageboard",methods=["GET","POST"])
+def messageboard():
+
+    return(render_template("messageboard.html"))
+
 @app.route("/userlog",methods=["GET","POST"])
 def userlog():
     conn = sqlite3.connect('user.db')
